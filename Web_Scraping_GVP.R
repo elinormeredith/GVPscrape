@@ -4,12 +4,17 @@
 #install packages and load libraries
 install.packages("rvest")
 install.packages("dplyr")
+install.packages("stringr")
+install.packages("tidyr")
+install.packages("readxl")
 library(rvest)
 library(dplyr)
 library(readxl)
 library(dplyr)
+library(stringr)
+library(tidyr)
 
-#select what page you want
+#select what website is needed
 #here we get the html data of the GVP website
 link <- "https://volcano.si.edu/volcanolist_holocene.cfm" #link to the GVP volcanoes list 
 download.file(link, destfile = "scrapedpage.html", quiet=TRUE) #download the html
@@ -25,8 +30,9 @@ volcano_links <- data.frame(volcano_links = volcano_links) #turn into dataframe
 volcano_links <- volcano_links %>% filter(grepl('https://volcano.si.edu/volcano.', volcano_links)) #specify only volcanoes
 volcano_links <- as.list(volcano_links$volcano_links) #list
 
+
 #subsetting volcanoes - recommended to run this as it makes it run quicker
-#volcano_links <- volcano_links[101:200]
+#volcano_links <- volcano_links[:]
 
 #below are functions - run which info is needed from the volcanoes
 #geology summary of the volcano
@@ -131,29 +137,54 @@ elevation = sapply(volcano_links, FUN = get_elevation)
 bulletin_reports = sapply(volcano_links, FUN = get_bulletin_reports)
 
 #put all data into a dataframe - remove those not extracted
-alldata = data.frame(name = v_name, number = v_number, country = country, LAT = LAT, LON = LON, elevation = elevation, last_eruption = last_eruption, volcano_type = tectonic_setting, summary = geo_summary, bulletin_and_latest_reports = bulletin_reports, 
-                     key_references = references)
+#alldata = data.frame(name = v_name, number = v_number, country = country, LAT = LAT, LON = LON, elevation = elevation, last_eruption = last_eruption, volcano_type = tectonic_setting, summary = geo_summary, bulletin_and_latest_reports = bulletin_reports, 
+#                     key_references = references)
+alldata = data.frame(name = v_name, number = v_number, summary = geo_summary, bulletin_and_latest_reports = bulletin_reports)
+alldata$bulletin_and_latest_reports<-paste0('"',alldata$bulletin_and_latest_reports,"'")
+
+#alldata$bulletin_and_latest_reports <- gsub(",","",alldata$bulletin_and_latest_reports)
+#alldata$bulletin_and_latest_reports <- str_replace_all(alldata$bulletin_and_latest_reports, "[\r\n]" , "")
+#alldata$key_references <- str_replace_all(alldata$key_references, "[\r\n]" , "")
 
 #save the data
 write.csv(alldata,"GVPinfo.csv", row.names = FALSE)
 
 
-#Making searches within the GVP report data
+#Making searches within the GVP report data for certain terms
 #filter to a search - change the search terms, for example lava flow impacts
 lava_records_summary = alldata %>%
   filter(str_detect(alldata$summary, "lava"))
-lava_impact_records_summary = lava_records %>%
-  filter(str_detect(lava_records$summary, "impact"))
-lava_destroy_records_summary = lava_records %>%
-  filter(str_detect(lava_records$summary, "destroy"))
+lava_records_bulletin = alldata %>%
+  filter(str_detect(alldata$bulletin_and_latest_reports, "lava"))
+lava_records <- rbind(lava_records_summary, lava_records_bulletin)
+lava_records_filtered <- lava_records %>%
+  distinct()
+
+#also include impact, destroy or damage.
+lava_impact_records_summary = lava_records_filtered %>%
+  filter(str_detect(lava_records_filtered$summary, "impact"))
+lava_impact_records_bulletin = lava_records_filtered %>%
+  filter(str_detect(lava_records_filtered$bulletin_and_latest_reports, "impact"))
+
+lava_destroy_records_summary = lava_records_filtered %>%
+  filter(str_detect(lava_records_filtered$summary, "destroy"))
+lava_destroy_records_bulletin = lava_records_filtered %>%
+  filter(str_detect(lava_records_filtered$bulletin_and_latest_reports, "destroy"))
+
+lava_damage_records_summary = lava_records_filtered %>%
+  filter(str_detect(lava_records_filtered$summary, "damage"))
+lava_damage_records_bulletin = lava_records_filtered %>%
+  filter(str_detect(lava_records_filtered$bulletin_and_latest_reports, "damage"))
 
 #bind them together
-all_records_summary <- rbind(lava_records_summary, lava_impact_records_summary, lava_destroy_records_summary)
+all_records_summary <- rbind(lava_impact_records_summary, lava_impact_records_bulletin, lava_destroy_records_summary, lava_destroy_records_bulletin, lava_damage_records_summary, lava_damage_records_bulletin)
 
 #remove duplicates
 all_records_filtered <- all_records_summary %>%
   distinct()
 
+list_eruptions_complete <- data.frame(volcano = all_records_filtered$name, number = all_records_filtered$number)
+
 #export
-final = data.frame(volcano = all_records_filtered$name, record = all_records_filtered$bulletin_and_latest_reports)
-write.csv(final,"list_impacts.csv", row.names = FALSE)
+write.csv(list_eruptions_complete,"list_lf_impacts_volcs.csv", quote=TRUE, row.names = FALSE)
+
